@@ -4,7 +4,6 @@ import type { Configuration } from 'webpack'
 const withVanillaExtract = createVanillaExtractPlugin()
 
 const nextConfig = {
-  turbopack: {},
   webpack(config: Configuration) {
     config.module!.rules!.push({
       test: /\.svg$/,
