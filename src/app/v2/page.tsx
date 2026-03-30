@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { colors } from '@/styles/tokens/colors'
 
