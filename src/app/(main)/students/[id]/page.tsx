@@ -421,19 +421,13 @@ function IncompleteItemList({
 }) {
   if (items.length === 0) return null
 
-  const remainingCount = items.filter((i) => !completedIds.has(i.lesson_student_data_id)).length
+  const remaining = items.filter((i) => !completedIds.has(i.lesson_student_data_id))
+  const allDone = remaining.length === 0
 
   return (
     <SectionCard>
       {/* 헤더 */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <span
           style={{
             fontSize: 16,
@@ -444,20 +438,7 @@ function IncompleteItemList({
         >
           미완료 항목
         </span>
-        {remainingCount > 0 ? (
-          <span
-            style={{
-              background: c.error500,
-              color: c.white,
-              borderRadius: 20,
-              padding: '1px 8px',
-              fontSize: 12,
-              fontWeight: 700,
-            }}
-          >
-            {remainingCount}
-          </span>
-        ) : (
+        {allDone ? (
           <span
             style={{
               background: c.success50,
@@ -470,72 +451,103 @@ function IncompleteItemList({
           >
             모두 완료 ✓
           </span>
+        ) : (
+          <span
+            style={{
+              background: c.error500,
+              color: c.white,
+              borderRadius: 20,
+              padding: '1px 8px',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            {remaining.length}
+          </span>
         )}
       </div>
 
       {/* 항목 목록 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-        {items.map((item, idx) => {
-          const done = completedIds.has(item.lesson_student_data_id)
-          const daysAgo = getDaysAgo(item.lesson_date)
-          return (
-            <div
-              key={item.lesson_student_data_id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '13px 20px',
-                borderTop: idx > 0 ? `1px solid ${c.gray50}` : 'none',
-                opacity: done ? 0.5 : 1,
-                transition: 'opacity 0.2s',
-              }}
-            >
-              {/* 왼쪽: 체크 버튼 + 항목명 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button
-                  onClick={() => onToggle(item.lesson_student_data_id)}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: '50%',
-                    border: `2px solid ${done ? c.success500 : c.gray100}`,
-                    background: done ? c.success500 : c.white,
-                    flexShrink: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    padding: 0,
-                    transition: 'border-color 0.2s, background 0.2s',
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M20 6L9 17L4 12"
-                      stroke={done ? c.white : c.gray200}
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-                <span
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: done ? c.gray300 : c.gray700,
-                    letterSpacing: '-0.48px',
-                    textDecoration: done ? 'line-through' : 'none',
-                    transition: 'color 0.2s',
-                  }}
-                >
-                  {item.item_name}
-                </span>
-              </div>
+      {allDone ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 4px',
+            color: c.success500,
+            fontSize: 14,
+            fontWeight: 500,
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" fill={c.success50} />
+            <path
+              d="M8 12l3 3 5-5"
+              stroke={c.success500}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          모든 항목을 완료했어요!
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {remaining.map((item, idx) => {
+            const daysAgo = getDaysAgo(item.lesson_date)
+            return (
+              <div
+                key={item.lesson_student_data_id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '13px 20px',
+                  borderTop: idx > 0 ? `1px solid ${c.gray50}` : 'none',
+                }}
+              >
+                {/* 왼쪽: 체크 버튼 + 항목명 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button
+                    onClick={() => onToggle(item.lesson_student_data_id)}
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      border: `2px solid ${c.gray100}`,
+                      background: c.white,
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M20 6L9 17L4 12"
+                        stroke={c.gray200}
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <span
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 600,
+                      color: c.gray700,
+                      letterSpacing: '-0.48px',
+                    }}
+                  >
+                    {item.item_name}
+                  </span>
+                </div>
 
-              {/* 오른쪽: 기간 배지 + 반 배지 */}
-              {!done && (
+                {/* 오른쪽: 기간 배지 + 반 배지 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   {daysAgo > 0 && (
                     <span
@@ -568,11 +580,11 @@ function IncompleteItemList({
                     {item.class_name}
                   </span>
                 </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </SectionCard>
   )
 }
