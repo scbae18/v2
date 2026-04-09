@@ -43,6 +43,19 @@ export default function AttendanceDetailModal({ session, onClose, onEnd }: Props
   const [remaining, setRemaining] = useState(getRemainingTimeStr(session.expiresAt))
   const [filter, setFilter] = useState<FilterType>('전체')
   const [localStudents, setLocalStudents] = useState([...session.students])
+  const [copiedId, setCopiedId] = useState<number | null>(null)
+
+  const getCheckUrl = (studentId: number) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return `${origin}/check/${session.sessionId}?studentId=${studentId}`
+  }
+
+  const copyLink = (studentId: number) => {
+    const url = getCheckUrl(studentId)
+    navigator.clipboard.writeText(url).catch(() => {})
+    setCopiedId(studentId)
+    setTimeout(() => setCopiedId(null), 1500)
+  }
 
   useEffect(() => {
     const tick = setInterval(() => {
@@ -200,14 +213,62 @@ export default function AttendanceDetailModal({ session, onClose, onEnd }: Props
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
+                        gap: 8,
                       }}
                     >
-                      <span style={{ fontSize: 16, fontWeight: 500, color: c.gray900, letterSpacing: '-0.48px' }}>
-                        {student.name}
-                      </span>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {/* 이름 + 링크 버튼 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                        <button
+                          onClick={() => window.open(getCheckUrl(student.studentId), '_blank')}
+                          title="학생 출결 화면 열기"
+                          style={{
+                            fontSize: 16,
+                            fontWeight: 500,
+                            color: c.gray900,
+                            letterSpacing: '-0.48px',
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            textDecoration: 'none',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {student.name}
+                        </button>
+                        {/* 링크 복사 버튼 */}
+                        <button
+                          onClick={() => copyLink(student.studentId)}
+                          title="링크 복사"
+                          style={{
+                            width: 20,
+                            height: 20,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: 0,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {copiedId === student.studentId ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                              <path d="M20 6L9 17L4 12" stroke={c.success500} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                              <rect x="9" y="9" width="13" height="13" rx="2" stroke={c.gray300} strokeWidth="1.5"/>
+                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke={c.gray300} strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                         {student.checkedAt && (
-                          <span style={{ fontSize: 16, fontWeight: 500, color: c.gray500, letterSpacing: '-0.48px' }}>
+                          <span style={{ fontSize: 14, fontWeight: 500, color: c.gray500, letterSpacing: '-0.42px' }}>
                             {student.checkedAt}
                           </span>
                         )}
