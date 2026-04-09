@@ -1,171 +1,173 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  MOCK_ATTENDANCE_SESSION,
-  type AttendanceStatus,
-  updateAttendanceStatus,
-} from '@/mock/attendance.mock'
-import { mockClasses } from '@/mocks/_db'
+import { mockClasses, mockStudentDetails } from '@/mocks/_db'
+import { createAttendanceSession } from '@/mock/attendance.mock'
+import { useAttendanceStore } from '@/stores/attendanceStore'
 import { colors } from '@/styles/tokens/colors'
-import Text from '@/components/common/Text'
-import Button from '@/components/common/Button'
+import AttendanceStartModal from './_components/AttendanceStartModal'
 
 const c = colors
 
-type Step = 'select' | 'setup' | 'active'
-
-const STATUS_OPTIONS: AttendanceStatus[] = ['출석', '지각', '미확인']
-const STATUS_COLORS: Record<AttendanceStatus, { bg: string; text: string }> = {
-  출석: { bg: c.success50, text: c.success500 },
-  지각: { bg: c.warning50, text: c.warning500 },
-  미확인: { bg: c.gray50, text: c.gray500 },
-}
-
 export default function AttendancePage() {
-  const [step, setStep] = useState<Step>('select')
-  const [selectedClassId, setSelectedClassId] = useState<number | null>(null)
-  const [startTime, setStartTime] = useState('16:00')
-  const [endTime, setEndTime] = useState('16:20')
-  const [session, setSession] = useState(MOCK_ATTENDANCE_SESSION)
-  const [, forceUpdate] = useState(0)
+  const { session, startSession } = useAttendanceStore()
+  const [startingClassId, setStartingClassId] = useState<number | null>(null)
 
-  const activeClasses = mockClasses.filter((c) => !c.ended_at)
+  const activeClasses = mockClasses.filter((cls) => !cls.ended_at)
 
-  const handleStartSession = () => {
-    setStep('active')
+  const handleStart = (classId: number, durationMinutes: number) => {
+    const cls = mockClasses.find((c) => c.id === classId)
+    if (!cls) return
+
+    const students = mockStudentDetails
+      .filter((s) => s.classes.some((c) => c.id === classId))
+      .map((s) => ({ id: s.id, name: s.name }))
+
+    const newSession = createAttendanceSession(
+      classId,
+      classId,
+      cls.name,
+      new Date().toISOString().slice(0, 10),
+      durationMinutes,
+      students,
+    )
+    startSession(newSession)
+    setStartingClassId(null)
   }
 
-  const handleManualChange = (studentId: number, status: AttendanceStatus) => {
-    updateAttendanceStatus(session.sessionId, studentId, status)
-    setSession({ ...MOCK_ATTENDANCE_SESSION })
-    forceUpdate((n) => n + 1)
-  }
-
-  const checkedCount = session.students.filter((s) => s.status === '출석' || s.status === '지각').length
+  const startingClass = activeClasses.find((cls) => cls.id === startingClassId)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-      <Text variant="display" as="h1">출결</Text>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+      {/* 헤더 */}
+      <div>
+        <h1 style={{ fontSize: 28, fontWeight: 700, color: c.gray900, letterSpacing: '-0.84px', lineHeight: 1.4, marginBottom: 6 }}>
+          출결
+        </h1>
+        <p style={{ fontSize: 14, color: c.gray500, letterSpacing: '-0.42px' }}>
+          반을 선택하고 출결을 시작하세요. 학생들에게 링크가 발송되고 실시간으로 현황을 확인할 수 있어요.
+        </p>
+      </div>
 
-      {/* STEP 1: 수업 선택 */}
-      {step === 'select' && (
-        <div>
-          <div style={{ marginBottom: 16 }}><Text variant="headingMd">수업 선택</Text></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, maxWidth: 640 }}>
-            {activeClasses.map((cls) => (
-              <button
+      {/* 진행 중인 세션 배너 */}
+      {session && (
+        <div
+          style={{
+            background: c.primary50,
+            border: `1.5px solid ${c.primary200}`,
+            borderRadius: 14,
+            padding: '16px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.primary500, flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: c.primary600, letterSpacing: '-0.45px' }}>
+              {session.className} 출결 진행 중
+            </p>
+            <p style={{ fontSize: 13, color: c.primary400, letterSpacing: '-0.39px', marginTop: 2 }}>
+              코드 {session.code} · 화면 하단 바에서 현황을 확인하세요
+            </p>
+          </div>
+          <span
+            style={{
+              background: c.primary500,
+              color: c.white,
+              fontSize: 12,
+              fontWeight: 700,
+              padding: '4px 10px',
+              borderRadius: 20,
+            }}
+          >
+            진행 중
+          </span>
+        </div>
+      )}
+
+      {/* 반 목록 */}
+      <div>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: c.gray700, letterSpacing: '-0.48px', marginBottom: 14 }}>
+          반 선택
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, maxWidth: 860 }}>
+          {activeClasses.map((cls) => {
+            const isActive = session?.classId === cls.id
+            const studentCount = mockStudentDetails.filter((s) => s.classes.some((c) => c.id === cls.id)).length
+
+            return (
+              <div
                 key={cls.id}
-                onClick={() => setSelectedClassId(cls.id)}
                 style={{
-                  padding: '16px 18px', borderRadius: 12, textAlign: 'left', cursor: 'pointer',
-                  border: `2px solid ${selectedClassId === cls.id ? c.primary500 : c.gray100}`,
-                  background: selectedClassId === cls.id ? c.primary50 : c.white,
-                  transition: '0.15s',
+                  background: c.white,
+                  border: `1.5px solid ${isActive ? c.primary300 : c.gray75}`,
+                  borderRadius: 16,
+                  padding: '20px 22px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 16,
                 }}
               >
-                <div style={{ fontSize: 15, fontWeight: 700, color: c.gray900 }}>{cls.name}</div>
-                <div style={{ fontSize: 12, color: c.gray500, marginTop: 4 }}>학생 {cls.student_count}명</div>
-              </button>
-            ))}
-          </div>
-          <Button
-            variant="primary" size="md"
-            onClick={() => selectedClassId && setStep('setup')}
-            disabled={!selectedClassId}
-            style={{ marginTop: 20 }}
-          >
-            다음 →
-          </Button>
-        </div>
-      )}
-
-      {/* STEP 2: 출결 시간 설정 */}
-      {step === 'setup' && (
-        <div style={{ maxWidth: 440 }}>
-          <div style={{ marginBottom: 20 }}><Text variant="headingMd">출결 시간 설정</Text></div>
-          <div style={{ background: c.white, borderRadius: 16, padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: c.gray700, marginBottom: 8 }}>수업 시작 시간</div>
-              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)}
-                style={{ padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${c.gray100}`, fontSize: 15, outline: 'none' }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: c.gray700, marginBottom: 8 }}>출결 마감 시간</div>
-              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)}
-                style={{ padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${c.gray100}`, fontSize: 15, outline: 'none' }} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-            <Button variant="ghost" size="md" onClick={() => setStep('select')}>이전</Button>
-            <Button variant="primary" size="md" onClick={handleStartSession}>출결 시작</Button>
-          </div>
-        </div>
-      )}
-
-      {/* STEP 3: 출결 진행 중 */}
-      {step === 'active' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* 코드 + 링크 박스 */}
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {/* 코드 */}
-            <div style={{ background: c.primary500, borderRadius: 16, padding: '24px 28px', color: c.white, flex: '0 0 auto', textAlign: 'center' }}>
-              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>출결 코드</div>
-              <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: 8 }}>{session.code}</div>
-              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>화면에 보여주세요</div>
-            </div>
-
-            {/* 진행 현황 */}
-            <div style={{ background: c.white, borderRadius: 16, padding: '20px 24px', flex: 1, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-              <div style={{ fontSize: 13, color: c.gray500, marginBottom: 4 }}>{session.className} · {session.lessonDate}</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: c.primary500 }}>
-                {checkedCount} <span style={{ fontSize: 16, color: c.gray500, fontWeight: 400 }}>/ {session.students.length}명 확인</span>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: c.gray500, marginBottom: 6 }}>학생 링크 (공유용)</div>
-                <div style={{ background: c.gray50, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: c.primary500, wordBreak: 'break-all' }}>
-                  {session.studentLink}
+                <div>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: c.gray900, letterSpacing: '-0.48px', marginBottom: 4 }}>
+                    {cls.name}
+                  </p>
+                  <p style={{ fontSize: 13, color: c.gray500, letterSpacing: '-0.39px' }}>
+                    학생 {studentCount}명
+                  </p>
                 </div>
+
+                {isActive ? (
+                  <div
+                    style={{
+                      padding: '10px',
+                      borderRadius: 10,
+                      background: c.primary50,
+                      textAlign: 'center',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: c.primary500,
+                      letterSpacing: '-0.39px',
+                    }}
+                  >
+                    출결 진행 중 · {session!.code}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setStartingClassId(cls.id)}
+                    disabled={!!session}
+                    style={{
+                      padding: '10px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: session ? c.gray50 : c.primary500,
+                      color: session ? c.gray300 : c.white,
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: session ? 'not-allowed' : 'pointer',
+                      letterSpacing: '-0.42px',
+                    }}
+                  >
+                    출결 시작하기
+                  </button>
+                )}
               </div>
-            </div>
-          </div>
-
-          {/* 학생 출결 현황 + 수기 수정 */}
-          <div style={{ background: c.white, borderRadius: 16, padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <div style={{ marginBottom: 16 }}><Text variant="headingMd">출결 현황 (수기 수정 가능)</Text></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {session.students.map((student) => (
-                <div key={student.studentId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: c.gray50, borderRadius: 10 }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: c.gray900 }}>{student.name}</div>
-                    {student.checkedAt && <div style={{ fontSize: 11, color: c.gray500 }}>{student.checkedAt} 확인</div>}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {STATUS_OPTIONS.map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => handleManualChange(student.studentId, status)}
-                        style={{
-                          padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                          background: student.status === status ? STATUS_COLORS[status].bg : c.white,
-                          color: student.status === status ? STATUS_COLORS[status].text : c.gray300,
-                          border: `1.5px solid ${student.status === status ? STATUS_COLORS[status].text : c.gray100}`,
-                        }}
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-              <Button variant="secondary" size="sm" onClick={() => setStep('select')}>새 출결 시작</Button>
-              <Button variant="primary" size="sm" onClick={() => alert('출결 완료 처리됐어요. (mock)')}>출결 종료</Button>
-            </div>
-          </div>
+            )
+          })}
         </div>
+      </div>
+
+      {/* 출결 시작 모달 */}
+      {startingClass && startingClassId !== null && (
+        <AttendanceStartModal
+          className={startingClass.name}
+          studentCount={
+            mockStudentDetails.filter((s) => s.classes.some((c) => c.id === startingClassId)).length
+          }
+          onStart={(duration) => handleStart(startingClassId, duration)}
+          onCancel={() => setStartingClassId(null)}
+        />
       )}
     </div>
   )
