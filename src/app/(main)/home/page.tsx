@@ -9,6 +9,13 @@ import envelope from '@/assets/images/envelope.png'
 import BookOpen from '@/assets/icons/icon-book-open.svg'
 import ChevronRight from '@/assets/icons/icon-chevron-right.svg'
 import * as styles from './home.css'
+import { mockClasses, mockStudentDetails } from '@/mocks/_db'
+import { createAttendanceSession } from '@/mock/attendance.mock'
+import { useAttendanceStore } from '@/stores/attendanceStore'
+import { colors } from '@/styles/tokens/colors'
+import AttendanceStartModal from '@/app/(main)/attendance/_components/AttendanceStartModal'
+
+const c = colors
 
 const steps = [
   {
@@ -60,6 +67,27 @@ const steps = [
 
 export default function HomePage() {
   const [activeStep, setActiveStep] = useState(0)
+  const [startingClassId, setStartingClassId] = useState<number | null>(null)
+  const { session, startSession } = useAttendanceStore()
+
+  const activeClasses = mockClasses.filter((cls) => !cls.ended_at)
+
+  const handleAttendanceStart = (classId: number, durationMinutes: number) => {
+    const cls = mockClasses.find((c) => c.id === classId)
+    if (!cls) return
+    const students = mockStudentDetails
+      .filter((s) => s.classes.some((c) => c.id === classId))
+      .map((s) => ({ id: s.id, name: s.name }))
+    const newSession = createAttendanceSession(
+      classId, classId, cls.name,
+      new Date().toISOString().slice(0, 10),
+      durationMinutes, students,
+    )
+    startSession(newSession)
+    setStartingClassId(null)
+  }
+
+  const startingClass = activeClasses.find((cls) => cls.id === startingClassId)
 
   return (
     <div className={styles.pageStyle}>
@@ -83,6 +111,93 @@ export default function HomePage() {
           />
         </div>
       </div>
+
+      {/* 출결 빠른 시작 */}
+      <div>
+        <div className={styles.sectionHeaderStyle}>
+          {/* 달력 아이콘 (인라인 SVG) */}
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="4" width="18" height="18" rx="3" stroke={c.gray900} strokeWidth="2"/>
+            <path d="M16 2v4M8 2v4M3 10h18" stroke={c.gray900} strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          <span className={styles.sectionTitleStyle}>출결 시작</span>
+          {session && (
+            <span style={{
+              fontSize: 12, fontWeight: 600, color: c.primary500,
+              background: c.primary50, borderRadius: 20, padding: '3px 10px',
+            }}>
+              {session.className} 진행 중
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+          {activeClasses.map((cls) => {
+            const isActive = session?.classId === cls.id
+            const studentCount = mockStudentDetails.filter((s) => s.classes.some((sc) => sc.id === cls.id)).length
+
+            return (
+              <div
+                key={cls.id}
+                style={{
+                  background: c.white,
+                  border: `1.5px solid ${isActive ? c.primary300 : c.gray75}`,
+                  borderRadius: 16,
+                  padding: '18px 20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: c.gray900, letterSpacing: '-0.45px', marginBottom: 4 }}>
+                    {cls.name}
+                  </p>
+                  <p style={{ fontSize: 12, color: c.gray500, letterSpacing: '-0.36px' }}>
+                    {studentCount}명
+                  </p>
+                </div>
+                {isActive ? (
+                  <span style={{ fontSize: 12, fontWeight: 600, color: c.primary500, background: c.primary50, borderRadius: 8, padding: '5px 10px', whiteSpace: 'nowrap' }}>
+                    진행 중
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setStartingClassId(cls.id)}
+                    disabled={!!session}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: session ? c.gray50 : c.primary500,
+                      color: session ? c.gray300 : c.white,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: session ? 'not-allowed' : 'pointer',
+                      letterSpacing: '-0.39px',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                    }}
+                  >
+                    출결 시작
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 출결 시작 모달 */}
+      {startingClass && (
+        <AttendanceStartModal
+          className={startingClass.name}
+          studentCount={mockStudentDetails.filter((s) => s.classes.some((sc) => sc.id === startingClass.id)).length}
+          onStart={(duration) => handleAttendanceStart(startingClass.id, duration)}
+          onCancel={() => setStartingClassId(null)}
+        />
+      )}
 
       {/* 클랫 시작 가이드 */}
       <div>

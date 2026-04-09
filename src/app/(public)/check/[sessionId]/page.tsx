@@ -1,54 +1,43 @@
 'use client'
 
-import { use, useState, useEffect, useRef } from 'react'
+import { use, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { colors } from '@/styles/tokens/colors'
 import {
   getSession,
-  submitAttendanceCode,
   getRemainingTimeStr,
+  submitAttendanceCode,
   type AttendanceSession,
-  type AttendanceStatus,
 } from '@/mock/attendance.mock'
-import { colors } from '@/styles/tokens/colors'
 
 const c = colors
 
 type PageState = 'input' | 'success' | 'expired' | 'already'
 
-export default function StudentCheckPage({ params }: { params: Promise<{ sessionId: string }> }) {
+export default function CheckPage({ params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = use(params)
   const searchParams = useSearchParams()
-  const studentIdParam = searchParams.get('studentId')
-  const studentId = studentIdParam ? Number(studentIdParam) : null
+  const studentId = Number(searchParams.get('studentId') ?? 0)
 
-  const [session, setSession] = useState<AttendanceSession | null>(null)
+  const session: AttendanceSession | null = getSession(sessionId)
+  const student = session?.students.find((s: { studentId: number }) => s.studentId === studentId)
+
   const [digits, setDigits] = useState<string[]>(['', '', '', ''])
-  const [pageState, setPageState] = useState<PageState>('input')
-  const [errorMsg, setErrorMsg] = useState('')
-  const [finalStatus, setFinalStatus] = useState<AttendanceStatus | null>(null)
-  const [remaining, setRemaining] = useState('')
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
+  const [error, setError] = useState(false)
+  const [remaining, setRemaining] = useState<string>(
+    session ? getRemainingTimeStr(session.expiresAt) : '00:00'
+  )
+  const [pageState, setPageState] = useState<PageState>(
+    !session
+      ? 'expired'
+      : !session.isActive
+        ? 'expired'
+        : student?.status !== '미확인'
+          ? 'already'
+          : 'input'
+  )
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([null, null, null, null])
 
-  // 세션 로드
-  useEffect(() => {
-    const s = getSession(sessionId)
-    if (!s) { setPageState('expired'); return }
-    setSession(s)
-    setRemaining(getRemainingTimeStr(s.expiresAt))
-
-    // studentId가 있으면 이미 출결 여부 확인
-    if (studentId) {
-      const student = s.students.find((st) => st.studentId === studentId)
-      if (student && (student.status === '출석' || student.status === '지각')) {
-        setFinalStatus(student.status)
-        setPageState('already')
-      }
-    }
-
-    if (!s.isActive || Date.now() > s.expiresAt) setPageState('expired')
-  }, [sessionId, studentId])
-
-  // 타이머
   useEffect(() => {
     if (!session) return
     const tick = setInterval(() => {
@@ -62,190 +51,261 @@ export default function StudentCheckPage({ params }: { params: Promise<{ session
     return () => clearInterval(tick)
   }, [session])
 
-  const code = digits.join('')
-
-  const handleDigit = (index: number, value: string) => {
-    if (!/^\d?$/.test(value)) return
-    setErrorMsg('')
+  const handleDigit = (idx: number, val: string) => {
+    const v = val.replace(/\D/g, '').slice(-1)
     const next = [...digits]
-    next[index] = value.slice(-1)
+    next[idx] = v
     setDigits(next)
-    if (value && index < 3) {
-      inputRefs.current[index + 1]?.focus()
+    setError(false)
+    if (v && idx < 3) {
+      inputRefs.current[idx + 1]?.focus()
     }
   }
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !digits[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus()
+  const handleKeyDown = (idx: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !digits[idx] && idx > 0) {
+      inputRefs.current[idx - 1]?.focus()
     }
   }
 
   const handleSubmit = () => {
-    if (!session || code.length < 4) return
-    const targetId = studentId ?? 1  // fallback for demo without studentId
-
-    const res = submitAttendanceCode(sessionId, targetId, code)
-    if (res.success) {
-      setFinalStatus(res.status ?? '출석')
+    const code = digits.join('')
+    if (code.length < 4) {
+      setError(true)
+      return
+    }
+    if (!session) return
+    const result = submitAttendanceCode(sessionId, studentId, code)
+    if (result.success) {
       setPageState('success')
     } else {
-      setErrorMsg(res.message)
+      setError(true)
       setDigits(['', '', '', ''])
       inputRefs.current[0]?.focus()
     }
   }
 
-  // ── 만료 화면
   if (pageState === 'expired') {
     return (
-      <div style={{ minHeight: '100vh', background: c.background, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: c.gray50, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="9" stroke={c.gray300} strokeWidth="2" />
-            <path d="M12 7v5l3 3" stroke={c.gray300} strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </div>
-        <p style={{ fontSize: 20, fontWeight: 700, color: c.gray700, letterSpacing: '-0.6px', marginBottom: 8 }}>출결이 마감됐어요</p>
-        <p style={{ fontSize: 14, color: c.gray400, textAlign: 'center', lineHeight: 1.5 }}>선생님께 문의해 주세요.</p>
-      </div>
-    )
-  }
-
-  // ── 이미 출결 처리됨
-  if (pageState === 'already') {
-    return (
-      <div style={{ minHeight: '100vh', background: c.background, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ width: 64, height: 64, borderRadius: '50%', background: c.warning50, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-            <path d="M20 6L9 17L4 12" stroke={c.warning500} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <p style={{ fontSize: 20, fontWeight: 700, color: c.gray700, letterSpacing: '-0.6px', marginBottom: 8 }}>이미 출결 처리된 학생이에요</p>
-        <p style={{ fontSize: 14, color: c.gray400 }}>상태: {finalStatus}</p>
-      </div>
-    )
-  }
-
-  // ── 출결 완료 화면
-  if (pageState === 'success') {
-    const isLate = finalStatus === '지각'
-    return (
-      <div style={{ minHeight: '100vh', background: c.background, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ width: 72, height: 72, borderRadius: '50%', background: isLate ? c.warning50 : c.success50, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-            <path d="M20 6L9 17L4 12" stroke={isLate ? c.warning500 : c.success500} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <p style={{ fontSize: 22, fontWeight: 700, color: c.gray900, letterSpacing: '-0.66px', marginBottom: 10 }}>
-          {isLate ? '지각 처리됐어요' : '출석 처리됐어요!'}
-        </p>
-        {session && (
-          <p style={{ fontSize: 14, color: c.gray500, textAlign: 'center', lineHeight: 1.5 }}>
-            {session.className} · {session.lessonDate}
+      <FullScreenLayout>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, flex: 1, justifyContent: 'center' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', background: c.gray100, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke={c.gray500} strokeWidth="2" />
+              <path d="M12 8v4M12 16h.01" stroke={c.gray500} strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </div>
+          <p style={{ fontSize: 22, fontWeight: 600, color: c.gray900, letterSpacing: '-0.66px', textAlign: 'center' }}>
+            출결 시간이 종료됐어요
           </p>
-        )}
-      </div>
+          <p style={{ fontSize: 14, fontWeight: 500, color: c.gray500, letterSpacing: '-0.42px', textAlign: 'center', lineHeight: 1.6 }}>
+            선생님께 문의해주세요
+          </p>
+        </div>
+      </FullScreenLayout>
     )
   }
 
-  // ── 코드 입력 화면
-  if (!session) return null
-
-  const student = studentId ? session.students.find((s) => s.studentId === studentId) : null
-  const isComplete = code.length === 4
-
-  return (
-    <div style={{ minHeight: '100vh', background: c.background, position: 'relative', maxWidth: 390, margin: '0 auto' }}>
-      {/* 상단 여백 + 클래스 배지 + 타이틀 */}
-      <div style={{ padding: '80px 28px 0', textAlign: 'center' }}>
-        {/* 반 배지 */}
-        <div style={{ display: 'inline-flex', background: c.primary400, borderRadius: 4, padding: '4px 12px', marginBottom: 24 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: c.white, letterSpacing: '-0.36px' }}>
-            {session.className}
+  if (pageState === 'already') {
+    const statusStyle = student?.status === '출석'
+      ? { bg: c.success50, text: c.success500, label: '출석' }
+      : student?.status === '지각'
+        ? { bg: c.warning50, text: c.warning500, label: '지각' }
+        : { bg: c.error50, text: c.error500, label: '결석' }
+    return (
+      <FullScreenLayout>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, flex: 1, justifyContent: 'center' }}>
+          <div
+            style={{
+              width: 64, height: 64, borderRadius: '50%',
+              background: statusStyle.bg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+            }}
+          >
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+              <path d="M5 13l4 4L19 7" stroke={statusStyle.text} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <p style={{ fontSize: 22, fontWeight: 600, color: c.gray900, letterSpacing: '-0.66px', textAlign: 'center' }}>
+            이미 출결 처리됐어요
+          </p>
+          <span style={{
+            background: statusStyle.bg, color: statusStyle.text,
+            borderRadius: 8, padding: '6px 16px', fontSize: 14, fontWeight: 600,
+          }}>
+            {statusStyle.label}
           </span>
         </div>
+      </FullScreenLayout>
+    )
+  }
+
+  if (pageState === 'success') {
+    return (
+      <FullScreenLayout>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, flex: 1, justifyContent: 'center' }}>
+          <div style={{ width: 80, height: 80, borderRadius: '50%', background: c.success50, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+              <path d="M5 13l4 4L19 7" stroke={c.success500} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <p style={{ fontSize: 24, fontWeight: 600, color: c.gray900, letterSpacing: '-0.72px', textAlign: 'center' }}>
+            출결이 완료됐어요!
+          </p>
+          <p style={{ fontSize: 14, fontWeight: 500, color: c.gray500, letterSpacing: '-0.42px', textAlign: 'center', lineHeight: 1.6 }}>
+            {student?.name}님의 출석이 확인됐어요
+          </p>
+        </div>
+      </FullScreenLayout>
+    )
+  }
+
+  // 코드 입력 화면
+  const filledCount = digits.filter(Boolean).length
+
+  return (
+    <FullScreenLayout>
+      {/* 본문 영역 */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '0 24px',
+          gap: 0,
+        }}
+      >
+        {/* 반 배지 — primary100 bg, primary400 text */}
+        {session && (
+          <div
+            style={{
+              background: c.primary100,
+              borderRadius: 4,
+              padding: '4px 8px',
+              marginBottom: 24,
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 600, color: c.primary400, letterSpacing: '-0.36px' }}>
+              {session.className}
+            </span>
+          </div>
+        )}
 
         {/* 타이틀 */}
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: c.gray900, letterSpacing: '-0.78px', lineHeight: 1.3, marginBottom: 12 }}>
+        <h1
+          style={{
+            fontSize: 24,
+            fontWeight: 600,
+            color: c.gray900,
+            letterSpacing: '-0.72px',
+            textAlign: 'center',
+            lineHeight: 1.4,
+            marginBottom: 16,
+          }}
+        >
           출결 코드를 입력해주세요
         </h1>
 
-        {student && (
-          <p style={{ fontSize: 15, fontWeight: 600, color: c.primary500, marginBottom: 4 }}>
-            {student.name}님
-          </p>
-        )}
-
-        <p style={{ fontSize: 13, color: c.gray400, lineHeight: 1.5, marginBottom: 16, letterSpacing: '-0.39px' }}>
+        {/* 부제목 */}
+        <p style={{ fontSize: 14, fontWeight: 500, color: c.gray500, letterSpacing: '-0.42px', textAlign: 'center', lineHeight: 1.6, marginBottom: 40 }}>
           선생님께 받은<br />4자리 코드를 입력해주세요
         </p>
 
         {/* 남은 시간 */}
-        <p style={{ fontSize: 14, fontWeight: 600, color: c.primary400, letterSpacing: '-0.42px', marginBottom: 40 }}>
-          남은 시간 {remaining}
+        <p style={{ fontSize: 14, fontWeight: 500, color: c.gray500, letterSpacing: '-0.42px', marginBottom: 24 }}>
+          남은 시간{' '}
+          <span style={{ color: c.primary500, fontWeight: 600 }}>{remaining}</span>
         </p>
 
         {/* 4자리 입력 박스 */}
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 16 }}>
-          {digits.map((d, i) => (
-            <input
-              key={i}
-              ref={(el) => { inputRefs.current[i] = el }}
-              type="tel"
-              inputMode="numeric"
-              maxLength={1}
-              value={d}
-              onChange={(e) => handleDigit(i, e.target.value)}
-              onKeyDown={(e) => handleKeyDown(i, e)}
-              style={{
-                width: 64,
-                height: 72,
-                borderRadius: 14,
-                border: `2px solid ${errorMsg ? c.error500 : d ? c.primary400 : c.gray100}`,
-                background: c.white,
-                fontSize: 28,
-                fontWeight: 700,
-                textAlign: 'center',
-                color: c.gray900,
-                outline: 'none',
-                boxShadow: d ? `0 0 0 3px ${c.primary50}` : 'none',
-                transition: 'border-color 0.15s, box-shadow 0.15s',
-              }}
-            />
-          ))}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 0 }}>
+          {digits.map((d, i) => {
+            const isFilled = d !== ''
+            const isActive = i === filledCount && filledCount < 4
+            return (
+              <input
+                key={i}
+                ref={(el) => { inputRefs.current[i] = el }}
+                type="tel"
+                inputMode="numeric"
+                maxLength={1}
+                value={d}
+                onChange={(e) => handleDigit(i, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(i, e)}
+                style={{
+                  width: 63,
+                  height: 81,
+                  textAlign: 'center',
+                  fontSize: 28,
+                  fontWeight: 700,
+                  color: error ? c.error500 : c.gray900,
+                  letterSpacing: '-0.84px',
+                  borderRadius: 12,
+                  border: `${isFilled || isActive ? '1.5px' : '1px'} solid ${
+                    error ? c.error200 : isFilled || isActive ? c.primary500 : c.gray100
+                  }`,
+                  background: c.white,
+                  outline: 'none',
+                  caretColor: 'transparent',
+                  cursor: 'text',
+                }}
+                autoFocus={i === 0}
+              />
+            )
+          })}
         </div>
 
-        {/* 에러 메시지 */}
-        {errorMsg && (
-          <p style={{ fontSize: 13, color: c.error500, fontWeight: 600, letterSpacing: '-0.39px' }}>
-            {errorMsg}
+        {error && (
+          <p style={{ fontSize: 13, color: c.error500, marginTop: 12, letterSpacing: '-0.39px' }}>
+            코드가 올바르지 않아요. 다시 확인해주세요.
           </p>
         )}
       </div>
 
-      {/* 확인 버튼 (하단 고정) */}
-      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, padding: '16px 28px 32px', background: c.background }}>
+      {/* 확인 버튼 — fixed bottom, 피그마: 342px wide, rounded-16, py-16 */}
+      <div style={{ padding: '0 24px 32px' }}>
         <button
           onClick={handleSubmit}
-          disabled={!isComplete}
           style={{
             width: '100%',
-            padding: '18px',
-            borderRadius: 14,
+            maxWidth: 342,
+            display: 'block',
+            margin: '0 auto',
+            padding: '16px 12px',
+            borderRadius: 16,
             border: 'none',
-            background: isComplete ? c.primary500 : c.gray100,
-            color: isComplete ? c.white : c.gray300,
-            fontSize: 17,
-            fontWeight: 700,
-            cursor: isComplete ? 'pointer' : 'not-allowed',
-            letterSpacing: '-0.51px',
+            background: digits.filter(Boolean).length === 4 ? c.primary500 : c.gray100,
+            color: digits.filter(Boolean).length === 4 ? c.white : c.gray500,
+            fontSize: 16,
+            fontWeight: 600,
+            cursor: 'pointer',
+            letterSpacing: '-0.48px',
             transition: 'background 0.15s',
           }}
         >
           확인
         </button>
       </div>
+    </FullScreenLayout>
+  )
+}
+
+// 모바일 중심 전체 화면 레이아웃
+function FullScreenLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        minHeight: '100dvh',
+        background: '#FAFAFA',
+        display: 'flex',
+        flexDirection: 'column',
+        maxWidth: 390,
+        margin: '0 auto',
+      }}
+    >
+      {children}
     </div>
   )
 }

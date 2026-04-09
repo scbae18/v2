@@ -34,6 +34,8 @@ import { ko } from 'date-fns/locale'
 import { createAttendanceSession, updateAttendanceStatus, type AttendanceSession, type AttendanceStatus } from '@/mock/attendance.mock'
 import { colors } from '@/styles/tokens/colors'
 import { useUserStore } from '@/stores/userStore'
+import { useAttendanceStore } from '@/stores/attendanceStore'
+import AttendanceStartModal from '@/app/(main)/attendance/_components/AttendanceStartModal'
 import { format as formatDate } from 'date-fns'
 import { ko as koLocale } from 'date-fns/locale'
 
@@ -275,6 +277,7 @@ function AttendancePanel({
   const statusColors: Record<AttendanceStatus, { bg: string; text: string }> = {
     출석: { bg: c.success50, text: c.success500 },
     지각: { bg: c.warning50, text: c.warning500 },
+    결석: { bg: c.error50, text: c.error500 },
     미확인: { bg: c.gray50, text: c.gray500 },
   }
 
@@ -319,16 +322,10 @@ function AttendancePanel({
         {/* 학생 링크 */}
         {!isExpired && (
           <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 12, color: c.gray500, marginBottom: 6 }}>학생 참여 링크</div>
-            <div style={{ background: c.gray50, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: c.primary500, wordBreak: 'break-all', marginBottom: 8 }}>
-              {session.studentLink}
+            <div style={{ fontSize: 12, color: c.gray500, marginBottom: 6 }}>출결 코드를 학생에게 알려주세요</div>
+            <div style={{ background: c.primary50, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: c.primary500 }}>
+              학생은 출결 링크에서 4자리 코드를 입력해요
             </div>
-            <button
-              onClick={() => { void navigator.clipboard?.writeText(session.studentLink); alert('링크가 복사됐어요.') }}
-              style={{ fontSize: 12, color: c.primary500, background: c.primary50, border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer' }}
-            >
-              링크 복사
-            </button>
           </div>
         )}
       </div>
@@ -402,27 +399,29 @@ export default function LessonDetailPage({ params }: { params: Promise<{ id: str
   const notifyModal = useDisclosure()
   const [pendingTemplateId, setPendingTemplateId] = useState<number | null>(null)
 
-  // 출결 세션
-  const [attSetup, setAttSetup] = useState(false) // 제한시간 설정 단계
+  // 출결 세션 — 글로벌 스토어와 연결
+  const { startSession: storeStartSession } = useAttendanceStore()
+  const [attSetup, setAttSetup] = useState(false)
   const [attSession, setAttSession] = useState<AttendanceSession | null>(null)
   const [attLimitSeconds, setAttLimitSeconds] = useState(600)
   const attInterval = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const openAttSetup = () => setAttSetup(true)
 
-  const startAttendance = (limitSeconds: number) => {
+  const startAttendance = (durationMinutes: number) => {
     if (!lesson) return
     setAttSetup(false)
-    setAttLimitSeconds(limitSeconds)
+    setAttLimitSeconds(durationMinutes * 60)
     const session = createAttendanceSession(
       lessonId,
       lesson.class_id,
       lesson.class_name,
       lesson.lesson_date,
+      durationMinutes,
       students.map((s) => ({ id: s.id, name: s.name }))
     )
     setAttSession({ ...session, students: [...session.students] })
-    // 2초마다 세션 상태 반영
+    storeStartSession(session) // 글로벌 플로팅 바에도 반영
     attInterval.current = setInterval(() => {
       setAttSession((prev) => prev ? { ...prev, students: [...prev.students] } : null)
     }, 2000)
@@ -577,7 +576,7 @@ export default function LessonDetailPage({ params }: { params: Promise<{ id: str
     .map((i) => ({ id: i.id, label: i.name }))
 
   return (
-    <div className={pageStyle}>
+    <div className={pageStyle} style={attSession ? { paddingBottom: 220 } : undefined}>
       {/* 헤더 */}
       <div className={headerStyle}>
         <div className={headerLeftStyle}>
@@ -612,7 +611,7 @@ export default function LessonDetailPage({ params }: { params: Promise<{ id: str
               size="sm"
               onClick={openAttSetup}
             >
-              ✓ 출석 시작하기
+              출결 시작하기
             </Button>
           ) : attSession ? (
             <Button
@@ -635,28 +634,16 @@ export default function LessonDetailPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      {/* 출결 설정 패널 */}
-      {attSetup && !attSession && (
-        <div className={sectionStyle}>
-          <AttendanceSetupPanel
-            onStart={startAttendance}
-            onCancel={() => setAttSetup(false)}
-          />
-        </div>
+      {/* 출결 시작 모달 */}
+      {attSetup && !attSession && lesson && (
+        <AttendanceStartModal
+          className={lesson.class_name}
+          studentCount={students.length}
+          onStart={startAttendance}
+          onCancel={() => setAttSetup(false)}
+        />
       )}
 
-      {/* 출결 패널 */}
-      {attSession && (
-        <div className={sectionStyle}>
-          <AttendancePanel
-            session={attSession}
-            limitSeconds={attLimitSeconds}
-            onManualChange={handleManualAttendance}
-            onApply={applyAttendance}
-            onClose={stopAttendance}
-          />
-        </div>
-      )}
 
       {/* 공통 내용 */}
       {commonItems.length > 0 && (
@@ -676,8 +663,8 @@ export default function LessonDetailPage({ params }: { params: Promise<{ id: str
         <LessonTable students={students} templateItems={lesson.items} onChange={setStudents} />
       </div>
 
-      {/* 하단 진행도 */}
-      <div className={footerStyle}>
+      {/* 하단 진행도 — 출결 세션 활성 시 플로팅 바 위로 올림 */}
+      <div className={footerStyle} style={attSession ? { bottom: 116 } : undefined}>
         <ProgressBar current={inputCount} total={students.length} />
         <div style={{ display: 'flex', gap: 8 }}>
           <Button

@@ -27,6 +27,7 @@ import MessageIcon from '@/assets/icons/icon-message.svg'
 const NAV_ITEMS = [
   { href: '/home', label: '홈', icon: HomeIcon },
   { href: '/lesson', label: '수업 입력', icon: EditIcon },
+  { href: '/attendance', label: '출결', icon: CalendarIcon },
   { href: '/management', label: '학생·반 관리', icon: UsersIcon },
   { href: '/template', label: '수업 템플릿', icon: ClipboardIcon },
   { href: '/stats', label: '전체 관리', icon: FlagIcon },
