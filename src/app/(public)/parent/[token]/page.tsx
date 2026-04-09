@@ -3,10 +3,33 @@
 import { use, useState, useMemo } from 'react'
 import { mockStudentDetails, mockLessonRecords, mockTemplates } from '@/mocks/_db'
 import { colors } from '@/styles/tokens/colors'
+import BookOpenIcon from '@/assets/icons/icon-book-open.svg'
+import CheckIcon from '@/assets/icons/icon-check.svg'
+import CalendarIcon from '@/assets/icons/icon-calendar.svg'
 
 const c = colors
 
-// ─── 헬퍼 ───────────────────────────────────────────────────────────────────
+// ─── 날짜 포맷 ────────────────────────────────────────────────────────────────
+function formatDateKo(dateStr: string) {
+  const [, m, d] = dateStr.split('-')
+  const date = new Date(dateStr)
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토']
+  return `${Number(m)}월 ${Number(d)}일 (${dayNames[date.getDay()]})`
+}
+
+function formatDateShort(dateStr: string) {
+  const [, m, d] = dateStr.split('-')
+  return `${Number(m)}월 ${Number(d)}일`
+}
+
+function getDaysAgo(dateStr: string): number {
+  const target = new Date(dateStr)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.floor((today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+// ─── 헬퍼 ────────────────────────────────────────────────────────────────────
 function extractLessonStats(studentId: number, lessonId: number) {
   const lesson = mockLessonRecords.find((l) => l.id === lessonId)
   if (!lesson) return null
@@ -19,22 +42,12 @@ function extractLessonStats(studentId: number, lessonId: number) {
 
   const attId = tpl.items.find((i) => i.item_type === 'ATTENDANCE')?.id
   const scoreId = tpl.items.find((i) => i.item_type === 'NUMBER')?.id
-  const hwId = tpl.items.find((i) => i.item_type === 'COMPLETE')?.id
 
   const getVal = (id?: number) =>
     id !== undefined ? sd.items.find((i) => i.template_item_id === id) : undefined
 
   const attRaw = getVal(attId)?.value
   const scoreRaw = getVal(scoreId)?.value
-  const hwItem = getVal(hwId)
-
-  // 공통 학습 내용 (TEXT, common)
-  const topicItem = tpl.items.find(
-    (i) => i.item_type === 'TEXT' && i.is_common && i.sort_order <= 4,
-  )
-  const topic = topicItem
-    ? lesson.common_data.find((d) => d.template_item_id === topicItem.id)?.value ?? null
-    : null
 
   return {
     lessonId: lesson.id,
@@ -45,8 +58,6 @@ function extractLessonStats(studentId: number, lessonId: number) {
         ? (attRaw as '출석' | '지각' | '결석')
         : null,
     score: scoreRaw ? Number(scoreRaw) || null : null,
-    homeworkDone: hwItem ? (hwItem.is_completed ?? null) : null,
-    topic,
   }
 }
 
@@ -61,9 +72,9 @@ function generateFeedback(
     ReturnType<typeof extractLessonStats>
   >[]
   const scores = validLessons.filter((l) => l.score !== null).map((l) => l.score!)
-  const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
-  const trend =
-    scores.length >= 2 ? scores[0] - scores[scores.length - 1] : 0
+  const avgScore =
+    scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
+  const trend = scores.length >= 2 ? scores[0] - scores[scores.length - 1] : 0
 
   if (rate >= 0.9 && (avgScore === null || avgScore >= 80)) {
     return `${name} 학생이 매우 성실하게 수업에 임하고 있어요. 과제와 학습 태도가 훌륭합니다.${avgScore !== null ? ` 최근 평균 점수도 ${avgScore}점으로 꾸준히 좋은 성취를 보이고 있습니다.` : ''} 앞으로도 함께 응원 부탁드립니다!`
@@ -80,69 +91,108 @@ function generateFeedback(
   return `${name} 학생이 꾸준히 수업에 참여하고 있어요.${avgScore !== null ? ` 최근 평균 점수는 ${avgScore}점입니다.` : ''} 앞으로도 잘 부탁드립니다!`
 }
 
-// ─── 서브 컴포넌트 ──────────────────────────────────────────────────────────
-function StatBox({
-  label,
-  value,
-  color,
-  bg,
-}: {
-  label: string
-  value: string
-  color: string
-  bg: string
-}) {
+// ─── 서브 컴포넌트 ────────────────────────────────────────────────────────────
+function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
-    <div
-      style={{
-        flex: 1,
-        background: bg,
-        borderRadius: 12,
-        padding: '14px 8px',
-        textAlign: 'center',
-      }}
-    >
-      <div style={{ fontSize: 10, color: c.gray300, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: 700, color }}>{value}</div>
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      {icon}
+      <span
+        style={{
+          fontSize: 14,
+          fontWeight: 600,
+          background: `linear-gradient(to right, ${c.primary400}, ${c.primary600})`,
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+          letterSpacing: '-0.42px',
+        }}
+      >
+        {title}
+      </span>
     </div>
   )
 }
 
-function SectionCard({
-  label,
-  children,
-}: {
-  label: string
-  children: React.ReactNode
-}) {
+function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div
       style={{
         background: c.white,
+        border: `1px solid ${c.gray50}`,
         borderRadius: 16,
-        padding: '18px 18px',
-        marginBottom: 10,
-        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        padding: 20,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        ...style,
       }}
     >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: c.gray300,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          marginBottom: 12,
-        }}
-      >
-        {label}
-      </div>
       {children}
     </div>
   )
 }
 
-// ─── 메인 페이지 ─────────────────────────────────────────────────────────────
+function StatRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
+    >
+      <span
+        style={{
+          fontSize: 12,
+          fontWeight: 500,
+          color: c.gray700,
+          letterSpacing: '-0.36px',
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          color: c.primary500,
+          letterSpacing: '-0.36px',
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function Tag({
+  label,
+  bg,
+  color,
+}: {
+  label: string
+  bg: string
+  color: string
+}) {
+  return (
+    <div
+      style={{
+        background: bg,
+        borderRadius: 6,
+        padding: '4px 8px',
+        fontSize: 10,
+        fontWeight: 600,
+        color,
+        letterSpacing: '-0.3px',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </div>
+  )
+}
+
+// ─── 메인 페이지 ──────────────────────────────────────────────────────────────
 export default function ParentDashboardPage({
   params,
 }: {
@@ -152,7 +202,6 @@ export default function ParentDashboardPage({
   const studentId = /^\d+$/.test(token) ? Number(token) : null
   const student = studentId ? mockStudentDetails.find((s) => s.id === studentId) : null
 
-  // 수업 이력 계산
   const lessonEntries = useMemo(() => {
     if (!student) return []
     const classIds = student.classes.map((cls) => cls.id)
@@ -166,21 +215,17 @@ export default function ParentDashboardPage({
   }, [student])
 
   const latestLesson = lessonEntries[0] ?? null
-  const recentHistory = lessonEntries.slice(1, 6)
+  const recentHistory = lessonEntries.slice(1, 3)
 
   const aiFeedback = useMemo(
     () => (student ? generateFeedback(student, lessonEntries) : ''),
     [student, lessonEntries],
   )
 
-  // 미완료 항목 (해야 할 것)
   const [doneIds, setDoneIds] = useState<Set<number>>(new Set())
   const todoItems = student?.incomplete_items ?? []
-  const activeTodos = todoItems.filter(
-    (item) => !doneIds.has(item.lesson_student_data_id),
-  )
+  const activeTodos = todoItems.filter((item) => !doneIds.has(item.lesson_student_data_id))
 
-  // 학생 없음
   if (!student) {
     return (
       <div
@@ -189,7 +234,7 @@ export default function ParentDashboardPage({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#F8F9FC',
+          background: c.background,
         }}
       >
         <div style={{ textAlign: 'center', padding: 32 }}>
@@ -218,375 +263,360 @@ export default function ParentDashboardPage({
     return c.gray50
   }
 
+  const latestClass = student.classes[0]
+  const headingDate = latestLesson ? formatDateShort(latestLesson.date) : null
+
   return (
-    <div style={{ background: '#F4F5F9', minHeight: '100vh' }}>
-      <div style={{ maxWidth: 520, margin: '0 auto', paddingBottom: 48 }}>
-        {/* ─ 상단 헤더 ─ */}
+    <div style={{ background: c.background, minHeight: '100vh' }}>
+      <div style={{ maxWidth: 390, margin: '0 auto', position: 'relative' }}>
+        {/* ── 장식 원 ── */}
         <div
           style={{
-            background: `linear-gradient(160deg, ${c.primary600} 0%, ${c.primary400} 100%)`,
-            padding: '36px 20px 28px',
-            color: c.white,
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            top: 66,
+            width: 300,
+            height: 300,
+            borderRadius: '50%',
+            background:
+              'radial-gradient(circle, rgba(87,116,218,0.18) 0%, rgba(87,116,218,0.06) 55%, transparent 75%)',
+            pointerEvents: 'none',
+          }}
+        />
+
+        {/* ── 헤더 ── */}
+        <div
+          style={{
+            paddingTop: 66,
+            paddingBottom: 32,
+            textAlign: 'center',
+            position: 'relative',
+            zIndex: 1,
           }}
         >
-          {/* 로고 */}
+          <p
+            style={{
+              fontSize: 16,
+              fontWeight: 600,
+              color: c.gray700,
+              letterSpacing: '-0.48px',
+              marginBottom: 32,
+            }}
+          >
+            {student.name} 학부모님 안녕하세요
+          </p>
+
           <div
             style={{
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               gap: 8,
-              marginBottom: 20,
-              opacity: 0.85,
             }}
           >
-            <div
+            {latestClass && (
+              <div
+                style={{
+                  display: 'inline-flex',
+                  background: c.primary400,
+                  borderRadius: 4,
+                  padding: '4px 8px',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: c.white,
+                    letterSpacing: '-0.36px',
+                  }}
+                >
+                  {latestClass.name}
+                </span>
+              </div>
+            )}
+            <p
               style={{
-                width: 24,
-                height: 24,
-                background: 'rgba(255,255,255,0.25)',
-                borderRadius: 6,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                fontSize: 24,
+                fontWeight: 600,
+                color: c.gray900,
+                letterSpacing: '-0.72px',
+                lineHeight: 1.4,
               }}
             >
-              <span style={{ fontSize: 12, fontWeight: 800 }}>C</span>
-            </div>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>
-              {student.classes[0]?.academy_name ?? 'CLAT'} 학부모 포털
-            </span>
-          </div>
-
-          {/* 학생 정보 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: '50%',
-                background: 'rgba(255,255,255,0.2)',
-                border: '2px solid rgba(255,255,255,0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <span style={{ fontSize: 22, fontWeight: 700 }}>{student.name[0]}</span>
-            </div>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>
-                {student.name}{' '}
-                <span style={{ fontSize: 14, fontWeight: 400, opacity: 0.8 }}>학생</span>
-              </div>
-              <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
-                {student.classes.map((cls) => cls.name).join(' · ')}
-              </div>
-            </div>
+              {headingDate ? `${headingDate} 수업 결과` : '수업 결과'}
+            </p>
           </div>
         </div>
 
-        {/* ─ 콘텐츠 ─ */}
-        <div style={{ padding: '16px 14px 0' }}>
-          {/* 최근 수업 요약 */}
+        {/* ── 카드 영역 ── */}
+        <div
+          style={{
+            padding: '0 24px 48px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
+          {/* 오늘 수업 요약 */}
           {latestLesson ? (
-            <SectionCard
-              label={`최근 수업 · ${latestLesson.date} ${latestLesson.className}`}
-            >
-              <div style={{ display: 'flex', gap: 8, marginBottom: latestLesson.topic ? 12 : 0 }}>
-                <StatBox
-                  label="출결"
-                  value={latestLesson.attendance ?? '-'}
-                  color={attColor(latestLesson.attendance)}
-                  bg={attBg(latestLesson.attendance)}
-                />
-                <StatBox
-                  label="점수"
-                  value={latestLesson.score !== null ? `${latestLesson.score}점` : '-'}
-                  color={
-                    latestLesson.score !== null && latestLesson.score >= 80
-                      ? c.primary500
-                      : latestLesson.score !== null
-                        ? c.warning500
-                        : c.gray300
-                  }
-                  bg={c.primary50}
-                />
-                <StatBox
-                  label="과제"
-                  value={
-                    latestLesson.homeworkDone === true
-                      ? '완료 ✓'
-                      : latestLesson.homeworkDone === false
-                        ? '미완료'
-                        : '-'
-                  }
-                  color={
-                    latestLesson.homeworkDone === true
-                      ? c.success500
-                      : latestLesson.homeworkDone === false
-                        ? c.warning500
-                        : c.gray300
-                  }
-                  bg={
-                    latestLesson.homeworkDone === true
-                      ? c.success50
-                      : latestLesson.homeworkDone === false
-                        ? c.warning50
-                        : c.gray50
-                  }
-                />
-              </div>
-              {latestLesson.topic && (
-                <div
-                  style={{
-                    background: c.gray50,
-                    borderRadius: 10,
-                    padding: '10px 13px',
-                    fontSize: 13,
-                    color: c.gray700,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  <span style={{ fontSize: 10, color: c.gray300, marginRight: 6 }}>
-                    오늘 학습
-                  </span>
-                  {latestLesson.topic}
-                </div>
+            <Card>
+              <SectionTitle
+                icon={
+                  <BookOpenIcon
+                    width={20}
+                    height={20}
+                    style={{ color: c.primary400, flexShrink: 0 }}
+                  />
+                }
+                title="오늘 수업 요약"
+              />
+              <StatRow label="출결" value={latestLesson.attendance ?? '-'} />
+              {latestLesson.score !== null && (
+                <StatRow label="단원평가" value={`${latestLesson.score}점`} />
               )}
-            </SectionCard>
+            </Card>
           ) : (
-            <SectionCard label="최근 수업">
-              <p style={{ color: c.gray300, fontSize: 13, textAlign: 'center', padding: '12px 0' }}>
+            <Card>
+              <SectionTitle
+                icon={
+                  <BookOpenIcon
+                    width={20}
+                    height={20}
+                    style={{ color: c.primary400, flexShrink: 0 }}
+                  />
+                }
+                title="오늘 수업 요약"
+              />
+              <p style={{ fontSize: 12, color: c.gray300, textAlign: 'center', padding: '8px 0' }}>
                 아직 수업 데이터가 없어요
               </p>
-            </SectionCard>
+            </Card>
           )}
 
           {/* 선생님 피드백 */}
-          <SectionCard label="선생님 피드백 · AI 생성">
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              <div
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: '50%',
-                  background: c.primary50,
-                  border: `1.5px solid ${c.primary100}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  fontSize: 18,
-                }}
-              >
-                👩‍🏫
-              </div>
-              <p
-                style={{
-                  fontSize: 14,
-                  lineHeight: 1.7,
-                  color: c.gray700,
-                  margin: 0,
-                  paddingTop: 2,
-                }}
-              >
-                {aiFeedback}
-              </p>
-            </div>
-          </SectionCard>
+          <Card>
+            <SectionTitle
+              icon={
+                <BookOpenIcon
+                  width={20}
+                  height={20}
+                  style={{ color: c.primary400, flexShrink: 0 }}
+                />
+              }
+              title="선생님 피드백"
+            />
+            <p
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: c.gray900,
+                lineHeight: 1.4,
+                letterSpacing: '-0.36px',
+                margin: 0,
+              }}
+            >
+              {aiFeedback}
+            </p>
+          </Card>
 
           {/* 해야 할 것 */}
           {activeTodos.length > 0 && (
-            <SectionCard label={`해야 할 것 · ${activeTodos.length}건`}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {activeTodos.map((todo) => (
-                  <div
-                    key={todo.lesson_student_data_id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 11,
-                      padding: '11px 13px',
-                      background: c.gray50,
-                      borderRadius: 10,
-                      cursor: 'pointer',
-                    }}
-                    onClick={() =>
-                      setDoneIds((prev) =>
-                        new Set([...prev, todo.lesson_student_data_id]),
-                      )
-                    }
-                  >
+            <Card>
+              <SectionTitle
+                icon={
+                  <CheckIcon
+                    width={18}
+                    height={18}
+                    style={{ color: c.primary400, flexShrink: 0 }}
+                  />
+                }
+                title="해야 할 것"
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {activeTodos.map((todo) => {
+                  const daysAgo = getDaysAgo(todo.lesson_date)
+                  return (
                     <div
+                      key={todo.lesson_student_data_id}
                       style={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: '50%',
-                        border: `2px solid ${c.gray200}`,
-                        background: c.white,
-                        flexShrink: 0,
+                        background: c.gray50,
+                        borderRadius: 8,
+                        padding: '8px 8px 8px 12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
                       }}
-                    />
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: c.gray900 }}>
+                      onClick={() =>
+                        setDoneIds((prev) =>
+                          new Set([...prev, todo.lesson_student_data_id]),
+                        )
+                      }
+                    >
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: c.gray700,
+                          letterSpacing: '-0.36px',
+                        }}
+                      >
                         {todo.item_name}
-                      </div>
-                      <div style={{ fontSize: 11, color: c.gray300, marginTop: 2 }}>
-                        {todo.lesson_date} · {todo.class_name}
+                      </span>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {daysAgo > 0 && (
+                          <Tag
+                            label={`${daysAgo}일 지남`}
+                            bg="#fee5e5"
+                            color={c.error500}
+                          />
+                        )}
+                        <Tag
+                          label={todo.class_name.length > 4 ? todo.class_name.slice(0, 4) : todo.class_name}
+                          bg={c.primary100}
+                          color={c.primary400}
+                        />
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
-            </SectionCard>
+            </Card>
           )}
 
           {todoItems.length > 0 && activeTodos.length === 0 && (
-            <SectionCard label="해야 할 것">
+            <Card>
+              <SectionTitle
+                icon={
+                  <CheckIcon
+                    width={18}
+                    height={18}
+                    style={{ color: c.primary400, flexShrink: 0 }}
+                  />
+                }
+                title="해야 할 것"
+              />
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
+                  gap: 6,
                   color: c.success500,
-                  fontSize: 13,
-                  padding: '4px 0',
+                  fontSize: 12,
                 }}
               >
                 <span>✓</span>
                 <span>모든 항목을 완료했어요!</span>
               </div>
-            </SectionCard>
+            </Card>
           )}
 
           {/* 최근 수업 이력 */}
           {recentHistory.length > 0 && (
-            <SectionCard label="최근 수업 이력">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                {recentHistory.map((lesson, i) => (
+            <Card style={{ position: 'relative', minHeight: 170, overflow: 'hidden' }}>
+              <SectionTitle
+                icon={
+                  <CalendarIcon
+                    width={20}
+                    height={20}
+                    style={{ color: c.primary400, flexShrink: 0 }}
+                  />
+                }
+                title="최근 수업 이력"
+              />
+              <div style={{ position: 'relative', paddingLeft: 32 }}>
+                {/* 세로 타임라인 선 */}
+                {recentHistory.length > 1 && (
                   <div
-                    key={lesson.lessonId}
                     style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '10px 0',
-                      borderBottom:
-                        i < recentHistory.length - 1
-                          ? `1px solid ${c.gray50}`
-                          : 'none',
+                      position: 'absolute',
+                      left: 3,
+                      top: 6,
+                      width: 0,
+                      height: 'calc(100% - 12px)',
+                      borderLeft: `1px dashed ${c.gray100}`,
                     }}
-                  >
-                    <div>
-                      <span
+                  />
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  {recentHistory.map((lesson) => (
+                    <div key={lesson.lessonId} style={{ position: 'relative' }}>
+                      {/* 점 */}
+                      <div
                         style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: c.gray900,
+                          position: 'absolute',
+                          left: -29,
+                          top: 4,
+                          width: 6,
+                          height: 6,
+                          borderRadius: '50%',
+                          background: c.primary400,
                         }}
-                      >
-                        {lesson.date}
-                      </span>
-                      <span
-                        style={{ fontSize: 12, color: c.gray500, marginLeft: 8 }}
-                      >
-                        {lesson.className}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                      {lesson.attendance && (
-                        <span
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <p
                           style={{
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: attColor(lesson.attendance),
-                            background: attBg(lesson.attendance),
-                            borderRadius: 5,
-                            padding: '2px 8px',
+                            fontSize: 10,
+                            fontWeight: 500,
+                            color: c.primary400,
+                            letterSpacing: '-0.3px',
+                            lineHeight: 1.4,
                           }}
                         >
-                          {lesson.attendance}
-                        </span>
-                      )}
-                      {lesson.score !== null && (
-                        <span style={{ fontSize: 13, fontWeight: 600, color: c.gray700 }}>
-                          {lesson.score}점
-                        </span>
-                      )}
-                      {lesson.homeworkDone !== null && (
-                        <span
+                          {formatDateKo(lesson.date)}
+                        </p>
+                        <div
                           style={{
-                            fontSize: 12,
-                            color: lesson.homeworkDone ? c.success500 : c.warning500,
+                            display: 'flex',
+                            gap: 8,
+                            alignItems: 'center',
                           }}
                         >
-                          과제 {lesson.homeworkDone ? '✓' : '✗'}
-                        </span>
-                      )}
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: c.gray700,
+                              letterSpacing: '-0.36px',
+                            }}
+                          >
+                            {lesson.className}
+                          </span>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {lesson.attendance && (
+                              <Tag
+                                label={lesson.attendance}
+                                bg={attBg(lesson.attendance)}
+                                color={attColor(lesson.attendance)}
+                              />
+                            )}
+                            {lesson.score !== null && (
+                              <Tag
+                                label={`단원평가 ${lesson.score}점`}
+                                bg={c.gray50}
+                                color={c.gray600}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </SectionCard>
+            </Card>
           )}
-
-          {/* 완료율 요약 */}
-          <div
-            style={{
-              background: c.white,
-              borderRadius: 16,
-              padding: '16px 18px',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <span style={{ fontSize: 13, color: c.gray600 }}>전체 과제 완료율</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {/* 진행 바 */}
-              <div
-                style={{
-                  width: 80,
-                  height: 6,
-                  background: c.gray75,
-                  borderRadius: 3,
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    width: `${Math.round(student.stats.completion_rate * 100)}%`,
-                    height: '100%',
-                    background:
-                      student.stats.completion_rate >= 0.8
-                        ? c.success500
-                        : c.warning500,
-                    borderRadius: 3,
-                    transition: 'width 0.5s ease',
-                  }}
-                />
-              </div>
-              <span
-                style={{
-                  fontSize: 15,
-                  fontWeight: 700,
-                  color:
-                    student.stats.completion_rate >= 0.8 ? c.success500 : c.warning500,
-                }}
-              >
-                {Math.round(student.stats.completion_rate * 100)}%
-              </span>
-            </div>
-          </div>
 
           <p
             style={{
               textAlign: 'center',
               fontSize: 11,
               color: c.gray300,
-              marginTop: 20,
+              marginTop: 8,
               padding: '0 16px',
               lineHeight: 1.6,
             }}

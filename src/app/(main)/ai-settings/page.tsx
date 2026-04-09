@@ -24,7 +24,7 @@ const c = colors
 
 function IconWarm({ color }: { color: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
       <path d="M12 2L13.09 8.26L19 6L15.45 11L22 12L15.45 13L19 18L13.09 15.74L12 22L10.91 15.74L5 18L8.55 13L2 12L8.55 11L5 6L10.91 8.26L12 2Z" fill={color} />
     </svg>
   )
@@ -32,7 +32,7 @@ function IconWarm({ color }: { color: string }) {
 
 function IconAnalytical({ color }: { color: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
       <circle cx="11" cy="11" r="8" stroke={color} strokeWidth="2" />
       <path d="M21 21L16.65 16.65" stroke={color} strokeWidth="2" strokeLinecap="round" />
     </svg>
@@ -41,7 +41,7 @@ function IconAnalytical({ color }: { color: string }) {
 
 function IconConcise({ color }: { color: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
       <path d="M13 2L4.09 12.26L12 12L11 22L19.91 11.74L12 12L13 2Z" fill={color} />
     </svg>
   )
@@ -49,7 +49,7 @@ function IconConcise({ color }: { color: string }) {
 
 function IconCustom({ color }: { color: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
       <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
@@ -78,7 +78,7 @@ function SectionCard({ children }: { children: React.ReactNode }) {
       background: c.white,
       border: `1px solid ${c.gray50}`,
       borderRadius: 20,
-      padding: '28px',
+      padding: '27px',
       display: 'flex',
       flexDirection: 'column',
       gap: 0,
@@ -167,7 +167,6 @@ function ToneChip({
         letterSpacing: '-0.42px',
         lineHeight: 1.4,
         whiteSpace: 'nowrap',
-        height: 32,
       }}
     >
       <Icon color={iconColor} />
