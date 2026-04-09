@@ -36,6 +36,13 @@ export const modalRecipe = recipe({
         padding: '48px',
         maxHeight: '90vh',
       },
+      lg: {
+        width: 'min(960px, calc(100vw - 32px))',
+        borderRadius: '20px',
+        padding: 0,
+        maxHeight: 'min(720px, 90vh)',
+        overflow: 'hidden',
+      },
     },
   },
   defaultVariants: {
